@@ -1,0 +1,11 @@
+name: PlayerTrust
+main: me.orthopteroid.playertrust.PlayerTrust
+version: 0.0.1
+author: orthopteroid
+softdepend: [PermissionsEx]
+commands:
+  trust:
+    permission: playertrust.trust
+    aliases: [playertrust]
+    description: Locks-down untrusted players when no trusted players are logged in. Optionally supports PermissionsEx.
+    usage: trust [ list | ( add | remove ) ( '*' | <player>+ ) ]

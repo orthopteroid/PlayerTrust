@@ -1,0 +1,10 @@
+restrictionson: No trusted members remain on the server. Player actions locked.
+restrictionsoff: Trusted members are present on the server. Player actions are unlocked.
+restrictionsgoingon: No trusted members remain on the server. Player actions are locking....
+restrictionsgoingOff: Trusted members are present on the server. Player actions are unlocking...
+secondstolock: 30
+secondstounlock: 3
+pexTrustedgroup: Trusted
+pexRestrictedgroup: Restricted
+trustedplayers: []
+restrictedplayers: []
