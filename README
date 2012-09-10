@@ -1,3 +1,5 @@
+This is an anti-griefing server mod for the craftbukkit minecraft server.
+
 This mod locks down most world editing and interaction when trusted players are not logged in. This plugin will make use of PermissionsEX, if you have it installed, to change player group memberships when trusted folks are not logged in. If you don't yet have PermissionsEX working don't fret... PlayerTrust will use the config.yml file to identify trusted players and will keep basic restrictions to untrusted players when your server is in an unsupervised mode.
 
 Who can be come a trusted player? Well, all ops are trusted automatically. Ops are also the only people that can assign trusted status to other players.
