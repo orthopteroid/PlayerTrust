@@ -219,7 +219,7 @@ public class PlayerTrust extends JavaPlugin implements Listener
 		{ unrestrictPlayer( p ); }
 	}
 	
-	public void restrictPlayers()
+	public synchronized void restrictPlayers()
 	{
 		// don't restrict trusted players by accident
 		for (Player p : this.getServer().getOnlinePlayers() )
@@ -289,7 +289,7 @@ public class PlayerTrust extends JavaPlugin implements Listener
 	
 	/////////////////////////////////////////
 	
-	final int secondsPerTick = 5;
+	final int secondsPerTick = 2;
 	
 	@Override
 	public void onEnable()
