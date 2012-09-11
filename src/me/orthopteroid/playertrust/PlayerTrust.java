@@ -1,9 +1,11 @@
 package me.orthopteroid.playertrust;
 
+import java.io.File;
 import java.util.List;
 import org.bukkit.ChatColor;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
+import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -38,7 +40,6 @@ public class PlayerTrust extends JavaPlugin implements Listener
 	public class TrustViaPEX implements TrustAPI
 	{
 		PlayerTrust plugin;
-		FileConfiguration conf;
 		boolean dirty = false;
 		
 		@Override
@@ -51,12 +52,12 @@ public class PlayerTrust extends JavaPlugin implements Listener
 		
 		@Override
 		public void initialize(PlayerTrust p)
-		{ plugin = p; conf = p.getConfig(); }
+		{ plugin = p; }
 		
 		@Override
 		public boolean isPlayerTrusted(String s)
 		{
-			return PermissionsEx.getUser( s.toLowerCase() ).inGroup( conf.getString("pextrustedgroup") );
+			return PermissionsEx.getUser( s.toLowerCase() ).inGroup( plugin.getConfig().getString("pextrustedgroup") );
 		}
 
 		@Override
@@ -71,24 +72,24 @@ public class PlayerTrust extends JavaPlugin implements Listener
 		@Override
 		public void trustPlayer(String s)
 		{
-			PermissionsEx.getUser( s.toLowerCase() ).removeGroup( conf.getString("pexrestrictedgroup") );
-			PermissionsEx.getUser( s.toLowerCase() ).addGroup( conf.getString("pextrustedgroup") );
+			PermissionsEx.getUser( s.toLowerCase() ).removeGroup( plugin.getConfig().getString("pexrestrictedgroup") );
+			PermissionsEx.getUser( s.toLowerCase() ).addGroup( plugin.getConfig().getString("pextrustedgroup") );
 			dirty = true;
 		}
 		
 		@Override
 		public void restrictPlayer(String s)
 		{
-			PermissionsEx.getUser( s.toLowerCase() ).removeGroup( conf.getString("pextrustedgroup") );
-			PermissionsEx.getUser( s.toLowerCase() ).addGroup( conf.getString("pexrestrictedgroup") );
+			PermissionsEx.getUser( s.toLowerCase() ).removeGroup( plugin.getConfig().getString("pextrustedgroup") );
+			PermissionsEx.getUser( s.toLowerCase() ).addGroup( plugin.getConfig().getString("pexrestrictedgroup") );
 			dirty = true;
 		}
 		
 		@Override
 		public void unrestrictPlayer(String s)
 		{
-			PermissionsEx.getUser( s.toLowerCase() ).removeGroup( conf.getString("pextrustedgroup") );
-			PermissionsEx.getUser( s.toLowerCase() ).removeGroup( conf.getString("pexrestrictedgroup") );
+			PermissionsEx.getUser( s.toLowerCase() ).removeGroup( plugin.getConfig().getString("pextrustedgroup") );
+			PermissionsEx.getUser( s.toLowerCase() ).removeGroup( plugin.getConfig().getString("pexrestrictedgroup") );
 			dirty = true;
 		}
 	};
@@ -96,7 +97,6 @@ public class PlayerTrust extends JavaPlugin implements Listener
 	public class TrustViaConf implements TrustAPI
 	{
 		PlayerTrust plugin;
-		FileConfiguration conf;
 		List<String> trustedPlayers;
 		List<String> restrictedPlayers;
 		boolean dirty = false;
@@ -106,8 +106,8 @@ public class PlayerTrust extends JavaPlugin implements Listener
 		{
 			if( dirty )
 			{
-				conf.set("trustedplayers", trustedPlayers);
-				conf.set("restrictedplayers", restrictedPlayers);
+				plugin.getConfig().set("trustedplayers", trustedPlayers);
+				plugin.getConfig().set("restrictedplayers", restrictedPlayers);
 				plugin.saveConfig();
 				dirty = false;
 			}
@@ -120,9 +120,9 @@ public class PlayerTrust extends JavaPlugin implements Listener
 		@Override
 		public void initialize(PlayerTrust p)
 		{
-			plugin = p; conf = p.getConfig();
-			trustedPlayers = conf.getStringList("trustedplayers");
-			restrictedPlayers = conf.getStringList("restrictedplayers");
+			plugin = p;
+			trustedPlayers = plugin.getConfig().getStringList("trustedplayers");
+			restrictedPlayers = plugin.getConfig().getStringList("restrictedplayers");
 		}
 		
 		@Override
@@ -255,10 +255,14 @@ public class PlayerTrust extends JavaPlugin implements Listener
 
 		// notify players of change
 		if( changeRestrictionState > 0 )
-		{ this.getServer().broadcastMessage( this.getConfig().getString("restrictionsgoingon") ); }
+		{ 
+			this.getServer().broadcastMessage( this.getConfig().getString("restrictionsgoingon") );
+		}
 		else
 		if( changeRestrictionState < 0 )
-		{ this.getServer().broadcastMessage( this.getConfig().getString("restrictionsgoingoff") ); }
+		{
+			this.getServer().broadcastMessage( this.getConfig().getString("restrictionsgoingoff") );
+		}
 
 		// update lock state
 		if( changeRestrictionState != 0 )
@@ -290,13 +294,51 @@ public class PlayerTrust extends JavaPlugin implements Listener
 	/////////////////////////////////////////
 	
 	final int secondsPerTick = 2;
+	final String conf_yml = "" +
+		"restrictionson: No trusted members remain on the server. Player actions locked.\n" +
+		"restrictionsoff: Trusted members are present on the server. Player actions are unlocked.\n" +
+		"restrictionsgoingon: No trusted members remain on the server. Player actions are locking....\n" +
+		"restrictionsgoingoff: Trusted members are present on the server. Player actions are unlocking...\n" +
+		"restrictBedEnter: true\n" +
+		"restrictCommandPreprocess: false\n" +
+		"restrictDropItem: true\n" +
+		"restrictFishing: true\n" +
+		"restrictInteract: true\n" +
+		"restrictInteractEntity: true\n" +
+		"restrictMove: false\n" +
+		"restrictPickupItem: true\n" +
+		"secondstolock: 30\n" +
+		"secondstounlock: 3\n" +
+		"pexTrustedgroup: Trusted\n" +
+		"pexRestrictedgroup: Restricted\n" +
+		"trustedplayers: []\n" +
+		"restrictedplayers: []\n";
 	
 	@Override
 	public void onEnable()
 	{
+		// OMG the config stuff is all wierdly borked!
+		String configFilename = this.getDataFolder().toString() + File.separatorChar + "config.yml";
+		if( (new File( configFilename ).isFile()) == false )
+		{
+			try
+			{ this.getConfig().loadFromString( conf_yml ); }
+			catch( InvalidConfigurationException ex )
+			{ }
+			this.saveConfig();
+		}
 		this.reloadConfig();
 		//
 		instanceTrustImpl();
+		//
+		restrictBedEnter = this.getConfig().getBoolean( "restrictBedEnter" );
+		restrictCommandPreprocess = this.getConfig().getBoolean( "restrictCommandPreprocess" );
+		restrictDropItem = this.getConfig().getBoolean( "restrictDropItem" );
+		restrictFishing = this.getConfig().getBoolean( "restrictFishing" );
+		restrictInteract = this.getConfig().getBoolean( "restrictInteract" );
+		restrictInteractEntity = this.getConfig().getBoolean( "restrictInteractEntity" );
+		restrictMove = this.getConfig().getBoolean( "restrictMove" );
+		restrictPickupItem = this.getConfig().getBoolean( "restrictPickupItem" );
 		//
 		final PlayerTrust watcher = this;
 		this.getServer().getScheduler().scheduleAsyncRepeatingTask
@@ -359,7 +401,7 @@ public class PlayerTrust extends JavaPlugin implements Listener
 	{
 		Player p = event.getPlayer();
 		if( isPlayerTrusted(p) | isServerUnrestricted() )
-		{ unrestrictPlayer( p ); tick(); }
+		{ unrestrictPlayer( p ); }//tick(); }
 		else
 		{
 			restrictPlayer( p );
@@ -367,37 +409,46 @@ public class PlayerTrust extends JavaPlugin implements Listener
 		}
 	}
 
-	/////////////////////////////////////////
-	
+	////////////////////////
+
+	boolean restrictBedEnter;
+	boolean restrictCommandPreprocess;
+	boolean restrictDropItem;
+	boolean restrictFishing;
+	boolean restrictInteract;
+	boolean restrictInteractEntity;
+	boolean restrictMove;
+	boolean restrictPickupItem;
+		
 	@EventHandler
 	public void onPlayerBedEnter(PlayerBedEnterEvent event)
-	{ event.setCancelled( isServerRestricted() ); }
+	{ event.setCancelled( restrictBedEnter & isServerRestricted() ); }
 
 	@EventHandler
 	public void onPlayerCommandPreprocess(PlayerCommandPreprocessEvent event)
-	{ event.setCancelled( isServerRestricted() ); }
+	{ event.setCancelled( restrictCommandPreprocess & isServerRestricted() ); }
 
 	@EventHandler
 	public void onPlayerDropItem(PlayerDropItemEvent event)
-	{ event.setCancelled( isServerRestricted() ); }
+	{ event.setCancelled( restrictDropItem & isServerRestricted() ); }
 
 	@EventHandler
 	public void onPlayerFish(PlayerFishEvent event)
-	{ event.setCancelled( isServerRestricted() ); }
-	
+	{ event.setCancelled( restrictFishing & isServerRestricted() ); }
+
 	@EventHandler
 	public void onPlayerInteract(PlayerInteractEvent event)
-	{ event.setCancelled( isServerRestricted() ); }
-	
+	{ event.setCancelled( restrictInteract & isServerRestricted() ); }
+
 	@EventHandler
 	public void onPlayerInteractEntity(PlayerInteractEntityEvent event)
-	{ event.setCancelled( isServerRestricted() ); }
+	{ event.setCancelled( restrictInteractEntity & isServerRestricted() ); }
 
 	@EventHandler
 	public void onPlayerMove(PlayerMoveEvent event)
-	{ /*event.setCancelled( isServerLocked() );*/ }
+	{ event.setCancelled( restrictMove & isServerRestricted() ); }
 
 	@EventHandler
 	public void onPlayerPickupItem(PlayerPickupItemEvent event)
-	{ event.setCancelled( isServerRestricted() ); }
+	{ event.setCancelled( restrictPickupItem & isServerRestricted() ); }
 }
