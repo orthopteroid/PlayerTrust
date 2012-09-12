@@ -1,6 +1,6 @@
 name: PlayerTrust
 main: me.orthopteroid.playertrust.PlayerTrust
-version: 0.0.3
+version: 0.0.4
 author: orthopteroid
 softdepend: [PermissionsEx]
 commands:
