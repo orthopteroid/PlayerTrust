@@ -2,6 +2,8 @@ package me.orthopteroid.playertrust;
 
 import java.io.File;
 import java.util.List;
+import java.util.HashSet;
+import java.lang.Math;
 import org.bukkit.ChatColor;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
@@ -41,6 +43,7 @@ public class PlayerTrust extends JavaPlugin implements Listener
 	
 	public class TrustViaPEX implements TrustAPI
 	{
+		String trustedGroupName, restrictedGroupName;
 		PlayerTrust plugin;
 		boolean dirty = false;
 		
@@ -54,19 +57,23 @@ public class PlayerTrust extends JavaPlugin implements Listener
 		
 		@Override
 		public void initialize(PlayerTrust p)
-		{ plugin = p; }
+		{
+			plugin = p;
+			trustedGroupName = plugin.getConfig().getString("PEXTrustedGroup");
+			restrictedGroupName = plugin.getConfig().getString("PEXRestrictedGroup");
+		}
 		
 		@Override
 		public boolean isPlayerTrusted(String s)
 		{
-			return PermissionsEx.getUser( s.toLowerCase() ).inGroup( plugin.getConfig().getString("PEXTrustedGroup") );
+			return PermissionsEx.getUser( s.toLowerCase() ).inGroup( trustedGroupName );
 		}
 
 		@Override
 		public String getTrustedPlayers()
 		{
 			String pl = "";
-			for( PermissionUser user : PermissionsEx.getPermissionManager().getGroup( plugin.getConfig().getString("PEXTrustedGroup") ).getUsers() )
+			for( PermissionUser user : PermissionsEx.getPermissionManager().getGroup( trustedGroupName ).getUsers() )
 			{ pl = user.getName() + " " + pl; }
 			return pl;
 		}
@@ -74,24 +81,24 @@ public class PlayerTrust extends JavaPlugin implements Listener
 		@Override
 		public void trustPlayer(String s)
 		{
-			PermissionsEx.getUser( s.toLowerCase() ).removeGroup( plugin.getConfig().getString("PEXRestrictedGroup") );
-			PermissionsEx.getUser( s.toLowerCase() ).addGroup( plugin.getConfig().getString("PEXTrustedGroup") );
+			PermissionsEx.getUser( s.toLowerCase() ).removeGroup( restrictedGroupName );
+			PermissionsEx.getUser( s.toLowerCase() ).addGroup( trustedGroupName );
 			dirty = true;
 		}
 		
 		@Override
 		public void restrictPlayer(String s)
 		{
-			PermissionsEx.getUser( s.toLowerCase() ).removeGroup( plugin.getConfig().getString("PEXTrustedGroup") );
-			PermissionsEx.getUser( s.toLowerCase() ).addGroup( plugin.getConfig().getString("PEXRestrictedGroup") );
+			PermissionsEx.getUser( s.toLowerCase() ).removeGroup( trustedGroupName );
+			PermissionsEx.getUser( s.toLowerCase() ).addGroup( restrictedGroupName );
 			dirty = true;
 		}
 		
 		@Override
 		public void unrestrictPlayer(String s)
 		{
-			PermissionsEx.getUser( s.toLowerCase() ).removeGroup( plugin.getConfig().getString("PEXTrustedGroup") );
-			PermissionsEx.getUser( s.toLowerCase() ).removeGroup( plugin.getConfig().getString("PEXRestrictedGroup") );
+			PermissionsEx.getUser( s.toLowerCase() ).removeGroup( trustedGroupName );
+			PermissionsEx.getUser( s.toLowerCase() ).removeGroup( restrictedGroupName );
 			dirty = true;
 		}
 	};
@@ -99,7 +106,7 @@ public class PlayerTrust extends JavaPlugin implements Listener
 	public class TrustViaConf implements TrustAPI
 	{
 		PlayerTrust plugin;
-		List<String> trustedPlayers;
+		HashSet<String> trustedPlayers;
 		boolean dirty = false;
 		
 		@Override
@@ -121,7 +128,8 @@ public class PlayerTrust extends JavaPlugin implements Listener
 		public void initialize(PlayerTrust p)
 		{
 			plugin = p;
-			trustedPlayers = plugin.getConfig().getStringList("YMLTrustedPlayers");
+			for( String player : plugin.getConfig().getStringList("YMLTrustedPlayers") )
+			{ trustedPlayers.add( player.toLowerCase() ); }
 		}
 		
 		@Override
@@ -184,80 +192,55 @@ public class PlayerTrust extends JavaPlugin implements Listener
 	}
 
 	//////////////////////////////
+
+	String restrictionsOnMessage, restrictionsOffMessage;
+	String restrictionsGoingOnMessage, restrictionsGoingOffMessage;
+	Integer ticksToUnlock, ticksToLock;
 	
-	int restrictionState = -1; /* <-1 is counting up to unlocked, -1 is unlocked, 0 is invalid, 1 is locked, >1 is counting down to lock */
-	int changeRestrictionState = 0; /* 0 is no set, others are set values */
+	int curState = -1; /* <-1 is counting up to unlocked, -1 is unlocked, 0 is invalid, 1 is locked, >1 is counting down to lock */
 
-	private boolean isServerToBeRestricted() { return restrictionState > 1; }
-	private boolean isServerToBeUnrestricted() { return restrictionState < -1; }
-	private boolean isServerRestricted() { return restrictionState == 1; }
-	private boolean isServerUnrestricted() { return restrictionState == -1; }
-	private boolean isServerInCountdown() { return (restrictionState * restrictionState) != 1; }
+	private boolean isServerToBeRestricted() { return curState > 1; }
+	private boolean isServerToBeUnrestricted() { return curState < -1; }
+	private boolean isServerRestricted() { return curState == 1; }
+	private boolean isServerUnrestricted() { return curState == -1; }
+	private boolean isServerInCountdown() { return (curState * curState) != 1; }
 
-	public synchronized void tick() // serialized!
+	private boolean areTrustedPlayersOnline()
 	{
-		// check for trusted players
-		boolean areTrustedPlayersOnline = false;
 		for( Player p : this.getServer().getOnlinePlayers() )
+		{ if ( isPlayerTrusted( p ) ) { return true;} }
+		return false;
+	}
+	
+	public synchronized void tick() // serialized!
+	{		
+		// determine new plugin state from current server state
+		int newState = 0; /* 0 is no set, others are set values */
+		boolean trusted = areTrustedPlayersOnline();
+		if( trusted & ( isServerRestricted() | isServerToBeRestricted() ) )		{ newState = ticksToUnlock; }
+		else if( !trusted & ( isServerUnrestricted() ) )						{ newState = ticksToLock; }
+
+		// if necessary, change state & notify players
+		if( newState != 0 )
 		{
-			if ( isPlayerTrusted( p ) )
-			{ areTrustedPlayersOnline = true; break; }
+			if( newState > 0 )		{ this.getServer().broadcastMessage( restrictionsGoingOnMessage ); }
+			else if( newState < 0 )	{ this.getServer().broadcastMessage( restrictionsGoingOffMessage ); }
+			curState = newState; 
 		}
 
-		// change state?
-		if( areTrustedPlayersOnline )
+		// set direction and tick state
+		int stateDir = 0;
+		if( curState > 1 )			{ stateDir = -1; }
+		else if( curState < -1 )	{ stateDir = +1; }
+		curState += stateDir;
+		
+		// on last tick show message & apply restrictions
+		if( stateDir != 0 )
 		{
-			if( isServerRestricted() | isServerToBeRestricted() )
-			{
-				changeRestrictionState = -(this.getConfig().getInt("SecondsToUnlock") / secondsPerTick) - 1;
-				if( changeRestrictionState > -2 ) { changeRestrictionState = -2; }
-			}
+			if( curState == 1 )			{ this.getServer().broadcastMessage( restrictionsOnMessage ); restrictPlayers(); }
+			else if( curState == -1 )	{ this.getServer().broadcastMessage( restrictionsOffMessage ); unrestrictPlayers(); }
 		}
-		else
-		{
-			if( isServerUnrestricted() )
-			{
-				changeRestrictionState = (this.getConfig().getInt("SecondsToLock") / secondsPerTick) + 1;
-				if( changeRestrictionState < 2 ) { changeRestrictionState = 2; }
-			}
-		}
-
-		// notify players of change
-		if( changeRestrictionState > 0 )
-		{ 
-			this.getServer().broadcastMessage( this.getConfig().getString("RestrictionsGoingOn") );
-		}
-		else
-		if( changeRestrictionState < 0 )
-		{
-			this.getServer().broadcastMessage( this.getConfig().getString("RestrictionsGoingOff") );
-		}
-
-		// update lock state
-		if( changeRestrictionState != 0 )
-		{ restrictionState = changeRestrictionState; changeRestrictionState = 0; }
-
-		// tick down to lock or tick up to unlock
-		if( restrictionState > 1 )
-		{
-			restrictionState--;
-			if( restrictionState == 1 )
-			{
-				this.getServer().broadcastMessage( this.getConfig().getString("RestrictionsOn") );
-				restrictPlayers();
-			}
-		}
-		else
-		if( restrictionState < -1 )
-		{
-			restrictionState++;
-			if( restrictionState == -1 )
-			{
-				this.getServer().broadcastMessage( this.getConfig().getString("RestrictionsOff") );
-				unrestrictPlayers();
-			}
-		}
-		this.trustImpl.tick(); // save when dirty
+		this.trustImpl.tick(); // tick the impl (ie save when dirty)
 	}
 	
 	////////////////////////
@@ -366,6 +349,14 @@ public class PlayerTrust extends JavaPlugin implements Listener
 		restrictInteractEntity = this.getConfig().getBoolean( "RestrictInteractEntity" );
 		restrictMove = this.getConfig().getBoolean( "RestrictMove" );
 		restrictPickupItem = this.getConfig().getBoolean( "RestrictPickupItem" );
+		//
+		restrictionsOnMessage = this.getConfig().getString("RestrictionsOn");
+		restrictionsOffMessage = this.getConfig().getString("RestrictionsOff");
+		restrictionsGoingOnMessage = this.getConfig().getString("RestrictionsGoingOn");
+		restrictionsGoingOffMessage = this.getConfig().getString("RestrictionsGoingOff");
+		//
+		ticksToUnlock	= java.lang.Math.min( -2, -( this.getConfig().getInt("SecondsToUnlock") / secondsPerTick ) - 1 );
+		ticksToLock		= java.lang.Math.max( +2, +( this.getConfig().getInt("SecondsToLock") / secondsPerTick ) + 1 );
 		//
 		final PlayerTrust watcher = this;
 		this.getServer().getScheduler().scheduleAsyncRepeatingTask
